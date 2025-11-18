@@ -1,0 +1,13 @@
+.vs
+x64
+Win32
+DerivedData
+*.out
+*.bak
+*.dwg
+*.psd
+*.eddx
+*.xopp
+*.DS_Store
+/taif/build
+*.pro.user
