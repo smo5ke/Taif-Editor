@@ -6,6 +6,8 @@
 #include <QDebug>
 
 #include <QFileDialog>
+#include <QLockFile>
+#include <QDir>
 
 int main(int argc, char *argv[])
 {
@@ -13,6 +15,16 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationName("Alif");
     QCoreApplication::setApplicationName("Taif");
     app.setLayoutDirection(Qt::RightToLeft);
+
+
+    QString lockPath = QDir::tempPath() + "/taif_editor.lock";
+    QLockFile lockFile(lockPath);
+
+    if (!lockFile.tryLock(100)) {
+        QMessageBox::warning(nullptr, "طيف",
+                             "البرنامج يعمل بالفعل!\nلا يمكن تشغيل أكثر من نسخة في نفس الوقت.");
+        return 0;
+    }
 
     int fontId1 = QFontDatabase::addApplicationFont(":/fonts/resources/fonts/Tajawal/Tajawal-Regular.ttf");
     int fontId2 = QFontDatabase::addApplicationFont(":/fonts/resources/fonts/KawkabMono-Regular.ttf");
@@ -95,13 +107,20 @@ int main(int argc, char *argv[])
                                        QMessageBox::Close);
         return ret;
     }
+
     if (app.arguments().count() == 2) {
         filePath = app.arguments().at(1);
     }
-    app.setQuitOnLastWindowClosed(false);
 
-    WelcomeWindow w;
+    app.setQuitOnLastWindowClosed(true);
 
-    w.show();
+    if (!filePath.isEmpty()) {
+        Taif *editor = new Taif(filePath);
+        editor->show();
+    } else {
+        WelcomeWindow *w = new WelcomeWindow();
+        w->show();
+    }
+
     return app.exec();
 }

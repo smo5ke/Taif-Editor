@@ -26,6 +26,9 @@
 Taif::Taif(const QString& filePath, QWidget *parent)
     : QMainWindow(parent)
 {
+
+    setAttribute(Qt::WA_DeleteOnClose);
+
     // ===================================================================
     // الخطوة 1: إنشاء المكونات الرئيسية
     // ===================================================================
@@ -48,13 +51,13 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     this->setGeometry(screenSize->size().width() / 4, screenSize->size().height() / 5, 900, 700);
     this->setMenuBar(menuBar);
     // ===================================================================
-    // ✅ الخطوة 3: إعداد شريط الأدوات وزر تبديل الشريط (مهم الترتيب هنا)
+    //  الخطوة 3: إعداد شريط الأدوات وزر تبديل الشريط
     // ===================================================================
-    QToolBar *mainToolBar = new QToolBar("Main Toolbar", this); // أنشئ الكائن
+    QToolBar *mainToolBar = new QToolBar("Main Toolbar", this);
     mainToolBar->setObjectName("mainToolBar");
     mainToolBar->setMovable(false);
     mainToolBar->setIconSize(QSize(30, 30));
-    this->addToolBar(Qt::RightToolBarArea, mainToolBar); //
+    this->addToolBar(Qt::RightToolBarArea, mainToolBar);
 
     toggleSidebarAction = new QAction(this);
     toggleSidebarAction->setIcon(QIcon(":/icons/resources/side-bar.png"));
@@ -62,20 +65,18 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     toggleSidebarAction->setChecked(false);
     mainToolBar->addAction(toggleSidebarAction);
 
-    // ---  زر التشغيل ---
     QAction *runToolbarAction = new QAction(this);
     runToolbarAction->setIcon(QIcon(":/icons/resources/run.png"));
     runToolbarAction->setToolTip("تشغيل الملف الحالي (Run)");
     mainToolBar->addAction(runToolbarAction);
     connect(runToolbarAction, &QAction::triggered, this, &Taif::runAlif);
 
-    // يمكنك إضافة أزرار أخرى هنا إذا أردت
     // mainToolBar->addSeparator();
     // mainToolBar->addAction(menuBar->newAction); // مثال لإضافة زر New
 
 
     // ===================================================================
-    // الخطوة 4: إعداد الشريط الجانبي (يبقى مخفيًا وفارغًا)
+    // الخطوة 4: إعداد الشريط الجانبي
     // ===================================================================
     fileTreeView->setModel(fileSystemModel);
     fileTreeView->header()->setVisible(false);
@@ -91,7 +92,7 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     // ===================================================================
     mainSplitter->addWidget(fileTreeView);
     mainSplitter->addWidget(tabWidget);
-    mainSplitter->setSizes({200, 700}); // شريط جانبي أصغر، محرر أكبر
+    mainSplitter->setSizes({200, 700});
     this->setCentralWidget(mainSplitter);
 
     // ===================================================================
@@ -101,22 +102,27 @@ Taif::Taif(const QString& filePath, QWidget *parent)
 
     TConsole *cmdConsole = new TConsole(this);
     cmdConsole->setObjectName("cmdConsole");
-    consoleTabWidget->addTab(cmdConsole, "Terminal (CMD)");
+    QString terminalName = "Terminal (CMD)";
+#if defined(Q_OS_LINUX)
+    terminalName = "Terminal (Bash)";
+#elif defined(Q_OS_MACOS)
+    terminalName = "Terminal (Zsh)";
+#endif
+
+    consoleTabWidget->addTab(cmdConsole, terminalName);
     cmdConsole->setConsoleRTL();
     cmdConsole->startCmd();
 
 
-    // ✅ 5. أضف التبويبات والكونسول إلى الفاصل العمودي
     editorSplitter->addWidget(tabWidget);
     editorSplitter->addWidget(consoleTabWidget);
-    editorSplitter->setSizes({600, 200}); // 600 للمحرر, 200 للكونسول
-    consoleTabWidget->hide(); // ابدأ مخفيًا
+    editorSplitter->setSizes({600, 200});
+    consoleTabWidget->hide();
 
-    // ✅ 6. أضف الشريط الجانبي والفاصل العمودي (الجديد) إلى الفاصل الأفقي (الرئيسي)
     mainSplitter->addWidget(fileTreeView);
-    mainSplitter->addWidget(editorSplitter); // ✅ أضف الفاصل الجديد هنا
-    mainSplitter->setSizes({200, 700}); // 200 للشريط الجانبي, 700 لباقي الواجهة
-    this->setCentralWidget(mainSplitter); // ✅ الفاصل الرئيسي هو المكون المركزي
+    mainSplitter->addWidget(editorSplitter);
+    mainSplitter->setSizes({200, 700});
+    this->setCentralWidget(mainSplitter);
 
     // ===================================================================
 
@@ -137,26 +143,41 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     connect(menuBar, &TMenuBar::saveRequested, this, &Taif::saveFile);
     connect(menuBar, &TMenuBar::saveAsRequested, this, &Taif::saveFileAs);
     connect(menuBar, &TMenuBar::settingsRequest, this, &Taif::openSettings);
-    connect(menuBar, &TMenuBar::exitRequested, this, &Taif::exitApp); // سيستدعي closeEvent بشكل غير مباشر
+    connect(menuBar, &TMenuBar::exitRequested, this, &Taif::exitApp);
     connect(menuBar, &TMenuBar::runRequested, this, &Taif::runAlif);
     connect(menuBar, &TMenuBar::aboutRequested, this, &Taif::aboutTaif);
     connect(menuBar, &TMenuBar::openFolderRequested, this, &Taif::handleOpenFolderMenu);
-    // ربط تغيير التبويب النشط لتحديث عنوان النافذة
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::updateWindowTitle);
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::onCurrentTabChanged);
     onCurrentTabChanged();
 
     // ===================================================================
-    // ✅ الخطوة 7: تطبيق التصميم (QSS) - نسخة نهائية
+    //  الخطوة 7: تطبيق التصميم (QSS)
     // ===================================================================
     QString styleSheet = R"(
         QMainWindow { background-color: #1e202e;font-size: 12pt;  }
 
+        /* --- تصميم شريط القوائم --- */
+        QMenuBar {
+            background-color: #1e202e; /* نفس لون الخلفية */
+            color: #cccccc;
+        }
+        QMenuBar::item {
+            background-color: transparent;
+            padding: 4px 10px;
+        }
+        QMenuBar::item:selected {
+            background-color: #3e3e42;
+        }
+        QMenuBar::item:pressed {
+            background-color: #007acc;
+        }
+
         /* --- تصميم شريط الأدوات --- */
-QToolBar {
+        QToolBar {
             background-color: #1e202e;
             border: none;
-            /* ✅ زيادة الحشو حول الشريط لجعله أعرض قليلاً */
+            /*  زيادة الحشو حول الشريط لجعله أعرض قليلاً */
             padding: 5px;
             spacing: 10px; /* مسافة بين كل زر والآخر */
         }
@@ -167,13 +188,13 @@ QToolBar {
             border: none;
             border-radius: 6px; /* حواف دائرية ناعمة */
 
-            /* ✅ أهم جزء: تحديد حجم مربع الزر ليكون كبيراً ومربعاً */
+            /*  أهم جزء: تحديد حجم مربع الزر ليكون كبيراً ومربعاً */
             min-width: 40px;
             max-width: 40px;
             min-height: 40px;
             max-height: 40px;
 
-            /* ✅ ضبط الحشو لضمان توسط الأيقونة (30px) داخل الزر (40px) */
+            /*  ضبط الحشو لضمان توسط الأيقونة (30px) داخل الزر (40px) */
             /* 40 - 30 = 10، يعني 5 بكسل من كل جهة */
             padding: 0px;
             margin: 0px;
@@ -264,6 +285,19 @@ QToolBar {
             // border-top: 1px solid #4f4f4f;
             font-size: 6pt;
         }
+
+        /*  تصميم خاص لمحتوى تبويبات الكونسول (TConsole) */
+        QTabWidget#consoleTabWidget QWidget {
+             background-color: #1e202e;
+             color: #1e202e;
+        }
+
+        /*  إذا كان TConsole يرث من QPlainTextEdit */
+        QPlainTextEdit {
+            background-color: #1e202e;
+            color: #1e202e;
+            border: none; /* لإزالة الحدود البيضاء إن وجدت */
+        }
     )";
     tabWidget->setStyleSheet(styleSheet);
 
@@ -315,7 +349,6 @@ QToolBar {
         QTabWidget#MainTabs QTabBar::close-button:hover { background: #5a5a5f; }
 
 )");
-
     this->setStyleSheet(styleSheet);
 
 
@@ -386,31 +419,31 @@ void Taif::toggleConsole()
 int Taif::needSave() {
     if (TEditor* editor = currentEditor()) {
         if (editor->document()->isModified()) {
-       QMessageBox msgBox;
-        msgBox.setWindowTitle("طيف");
-        msgBox.setText("تم التعديل على الملف.\n"    \
-                       "هل تريد حفظ التغييرات؟");
-        QPushButton *saveButton = msgBox.addButton("حفظ", QMessageBox::AcceptRole);
-        QPushButton *discardButton = msgBox.addButton("تجاهل", QMessageBox::DestructiveRole);
-        QPushButton *cancelButton = msgBox.addButton("إلغاء", QMessageBox::RejectRole);
-        msgBox.setDefaultButton(cancelButton);
+            QMessageBox msgBox;
+            msgBox.setWindowTitle("طيف");
+            msgBox.setText("تم التعديل على الملف.\n"    \
+                           "هل تريد حفظ التغييرات؟");
+            QPushButton *saveButton = msgBox.addButton("حفظ", QMessageBox::AcceptRole);
+            QPushButton *discardButton = msgBox.addButton("تجاهل", QMessageBox::DestructiveRole);
+            QPushButton *cancelButton = msgBox.addButton("إلغاء", QMessageBox::RejectRole);
+            msgBox.setDefaultButton(cancelButton);
 
-        QFont msgFont = this->font();
-        msgFont.setPointSize(10);
-        saveButton->setFont(msgFont);
-        discardButton->setFont(msgFont);
-        cancelButton->setFont(msgFont);
+            QFont msgFont = this->font();
+            msgFont.setPointSize(10);
+            saveButton->setFont(msgFont);
+            discardButton->setFont(msgFont);
+            cancelButton->setFont(msgFont);
 
-        msgBox.exec();
+            msgBox.exec();
 
-        QAbstractButton *clickedButton = msgBox.clickedButton();
-        if (clickedButton == saveButton) {
-            return 1;
-        } else if (clickedButton == discardButton) {
-            return 2;
-        } else if (clickedButton == cancelButton) {
-            return 0;
-        }
+            QAbstractButton *clickedButton = msgBox.clickedButton();
+            if (clickedButton == saveButton) {
+                return 1;
+            } else if (clickedButton == discardButton) {
+                return 2;
+            } else if (clickedButton == cancelButton) {
+                return 0;
+            }
         }
     }
 
@@ -530,7 +563,6 @@ void Taif::toggleSidebar()
 void Taif::onFileTreeDoubleClicked(const QModelIndex &index)
 {
     const QString filePath = fileSystemModel->filePath(index);
-
     if (!fileSystemModel->isDir(index)) {
         openFile(filePath);
     }
@@ -733,6 +765,12 @@ void Taif::runAlif() {
     if (!editor) return;
 
     QString filePath = editor->property("filePath").toString();
+    if (filePath.isEmpty() || editor->document()->isModified()) {
+        QMessageBox::warning(this, "تنبيه", "يجب حفظ الملف قبل التشغيل.");
+        saveFile();
+        filePath = editor->property("filePath").toString();
+        if (filePath.isEmpty() || editor->document()->isModified()) return;
+    }
 
     TConsole *console = nullptr;
     for (int i = 0; i < consoleTabWidget->count(); i++) {
@@ -747,14 +785,39 @@ void Taif::runAlif() {
         consoleTabWidget->addTab(console, "طرفية ألف");
         console->setLayoutDirection(Qt::RightToLeft);
         console->setConsoleRTL();
-
     }
 
     consoleTabWidget->setCurrentWidget(console);
     console->clear();
+    console->appendPlainTextThreadSafe("🚀 بدء تشغيل ملف ألف...");
+    console->appendPlainTextThreadSafe("📄 الملف: " + QFileInfo(filePath).fileName());
     consoleTabWidget->setVisible(true);
 
-    QString program = "C:/alif/alif.exe";
+
+    QString program;
+    QString appDir = QCoreApplication::applicationDirPath();
+
+#if defined(Q_OS_WIN)
+    QString localAlif = QDir(appDir).filePath("alif/alif.exe");
+    if (QFile::exists(localAlif)) {
+        program = localAlif;
+    } else {
+        program = "C:/alif/alif.exe";
+    }
+#elif defined(Q_OS_LINUX) || defined(Q_OS_MACOS)
+    program = QDir(appDir).filePath("alif/alif");
+#endif
+
+    if (!QFile::exists(program)) {
+        console->appendPlainTextThreadSafe("❌ خطأ فادح: لم يتم العثور على مترجم ألف!");
+        console->appendPlainTextThreadSafe("المسار المتوقع: " + program);
+
+#if defined(Q_OS_LINUX)
+        console->appendPlainTextThreadSafe("تأكد من أن ملف 'alif' موجود ولديه صلاحية التنفيذ (chmod +x).");
+#endif
+        return;
+    }
+
     QStringList args = { filePath };
     QString workingDir = QFileInfo(filePath).absolutePath();
 
@@ -771,7 +834,7 @@ void Taif::runAlif() {
 
     connect(worker, &ProcessWorker::finished, this, [=](int code){
         console->appendPlainTextThreadSafe(
-            "──────────────────────────────\n✅ انتهى التنفيذ (Exit code = "
+            "\n──────────────────────────────\n✅ انتهى التنفيذ (Exit code = "
             + QString::number(code) + ")\n"
             );
         thread->quit();
@@ -818,7 +881,7 @@ void Taif::closeTab(int index)
         }
 
     }
-     tabWidget->removeTab(index);
+    tabWidget->removeTab(index);
 
 }
 
@@ -857,7 +920,7 @@ void Taif::updateWindowTitle() {
     if (!editor) {
         title = "طيف";
     } else {
-       QString filePath = editor->property("filePath").toString();
+        QString filePath = editor->property("filePath").toString();
         // --------------------------------------------------------
 
         if (filePath.isEmpty()) {

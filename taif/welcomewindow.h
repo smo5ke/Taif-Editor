@@ -36,7 +36,7 @@ private slots:
     void handleNewFileRequest();
     void handleOpenFileRequest();
     void handleOpenFolderRequest();
-    void onRecentFileClicked(QListWidgetItem *); // ✅ دالة جديدة
+    void onRecentFileClicked(QListWidgetItem *);
 };
 
 #endif // WELCOMEWINDOW_H

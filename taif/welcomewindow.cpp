@@ -7,23 +7,23 @@
 WelcomeWindow::WelcomeWindow(QWidget *parent)
     : QMainWindow(parent)
 {
+
+    setAttribute(Qt::WA_DeleteOnClose);
     // ===================================================================
-    // الجزء الأول: القوائم وشريط الأدوات (لا تغيير هنا)
+    // الجزء الأول: القوائم وشريط الأدوات
     // ===================================================================
 
     TMenuBar *mainMenuBar = new TMenuBar(this);
     this->setMenuBar(mainMenuBar);
 
     // ===================================================================
-    // الجزء الثاني: بناء الواجهة المركزية (مع التعديلات المطلوبة)
+    // الجزء الثاني: بناء الواجهة المركزية
     // ===================================================================
 
-    // 1. الإعداد الأساسي
     QWidget *centralWidget = new QWidget(this);
     this->setCentralWidget(centralWidget);
     QVBoxLayout *mainVLayout = new QVBoxLayout(centralWidget);
 
-    // 2. بناء الجزء العلوي (Header)
     QHBoxLayout *headerContent = new QHBoxLayout();
     QLabel *logoLabel = new QLabel();
     logoLabel->setPixmap(QPixmap(":/icons/resources/TaifLogo.ico").scaled(96, 96, Qt::KeepAspectRatio, Qt::SmoothTransformation));
@@ -43,12 +43,10 @@ WelcomeWindow::WelcomeWindow(QWidget *parent)
     headerContent->addSpacing(10);
     headerContent->addLayout(textVLayout);
 
-    // 3. بناء الجزء الأوسط (المحتوى الرئيسي)
     QVBoxLayout *mainContentLayout = new QVBoxLayout();
     mainContentLayout->setSpacing(20);
     QSettings settings("Alif", "Taif");
     QStringList recentFiles = settings.value("RecentFiles").toStringList();
-    // --- المجموعة الأولى: "Recent Documents and Projects" (ستكون في الأعلى) ---
     QHBoxLayout *filesGroup = new QHBoxLayout();
     QVBoxLayout *filesButtons = new QVBoxLayout();
     newFileButton = new QPushButton("ملف جديد");
@@ -64,7 +62,6 @@ WelcomeWindow::WelcomeWindow(QWidget *parent)
     filesGroup->addLayout(filesButtons);
     filesGroup->addWidget(recentFilesList);
 
-    // --- المجموعة الثانية: "Saved Sessions" (ستكون في الأسفل) ---
     QHBoxLayout *sessionsGroup = new QHBoxLayout();
     QVBoxLayout *sessionsButtons = new QVBoxLayout();
     newSessionButton = new QPushButton("جلسة جديدة");
@@ -80,17 +77,15 @@ WelcomeWindow::WelcomeWindow(QWidget *parent)
     sessionsGroup->addWidget(noSessionsLabel);
 
     // ===================================================================
-    // ✅ الجزء الجديد: توحيد أحجام المكونات
+    //  توحيد أحجام المكونات
     // ===================================================================
     int uniformWidth = 450;
     recentFilesList->setFixedWidth(uniformWidth);
     noSessionsLabel->setFixedWidth(uniformWidth);
 
-    // إضافة المجموعتين (فوق بعضهما) إلى تخطيط المحتوى الرئيسي
     mainContentLayout->addLayout(filesGroup);
     mainContentLayout->addLayout(sessionsGroup);
 
-    // 4. بناء الجزء السفلي (Checkbox)
     showOnStartupCheck = new QCheckBox("Show welcome page for new window");
     showOnStartupCheck->setChecked(true);
 
@@ -120,14 +115,13 @@ WelcomeWindow::WelcomeWindow(QWidget *parent)
 
     QString styleSheet = R"(
         QWidget {
-            font-size: 10pt;     /* ✅ أضف !important هنا */
-            background-color: #141520; /* ✅ اللون الجديد للخلفية */
+            font-size: 10pt;
+            background-color: #141520;
             color: #cccccc;
         }
         QLabel#titleLabel { color: #ffffff; }
         QLabel { color: #909090; }
         QPushButton {
-            /* ✅ أضفنا حدًا أدنى للعرض لضمان عدم انضغاط الزر */
             min-width: 70px;
             background-color: #3a3d41; border: 1px solid #555555;
             padding: 4px 12px; border-radius: 4px;
@@ -164,9 +158,16 @@ WelcomeWindow::WelcomeWindow(QWidget *parent)
 void WelcomeWindow::onRecentFileClicked(QListWidgetItem *item)
 {
     QString filePath = item->text();
+    QFileInfo fileInfo(filePath);
+
+    if (!fileInfo.exists() || !fileInfo.isFile()) {
+        QMessageBox::warning(this, "ملف غير موجود",
+                             "تعذر العثور على الملف:\n" + filePath + "\n\nربما تم نقله أو حذفه.");
+        // delete item;
+        return;
+    }
 
     Taif *editor = new Taif(filePath);
-    editor->setAttribute(Qt::WA_DeleteOnClose);
     editor->show();
     this->close();
 }
@@ -174,7 +175,6 @@ void WelcomeWindow::onRecentFileClicked(QListWidgetItem *item)
 void WelcomeWindow::handleNewFileRequest()
 {
     Taif *editor = new Taif();
-    editor->setAttribute(Qt::WA_DeleteOnClose);
     editor->show();
     this->close();
 }
@@ -185,7 +185,6 @@ void WelcomeWindow::handleOpenFileRequest()
 
     if (!filePath.isEmpty()) {
         Taif *editor = new Taif(filePath);
-        editor->setAttribute(Qt::WA_DeleteOnClose);
         editor->show();
         this->close();
     }
@@ -197,7 +196,6 @@ void WelcomeWindow::handleOpenFolderRequest()
 
     if (!folderPath.isEmpty()) {
         Taif *editor = new Taif();
-        editor->setAttribute(Qt::WA_DeleteOnClose);
         editor->loadFolder(folderPath);
 
         editor->show();
@@ -207,12 +205,7 @@ void WelcomeWindow::handleOpenFolderRequest()
 
 void WelcomeWindow::closeEvent(QCloseEvent *event)
 {
-    QGuiApplication::quitOnLastWindowClosed();
-    // QApplication::quit();
-    // QApplication::quitOnLastWindowClosed();
-    QMainWindow::closeEvent(event);
-
-    this->close();
+    event->accept();
 }
 
 WelcomeWindow::~WelcomeWindow()

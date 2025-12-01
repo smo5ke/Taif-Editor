@@ -280,16 +280,19 @@ TConsole::~TConsole()
 
 void TConsole::startCmd()
 {
+    if (m_process->state() != QProcess::NotRunning) return;
+
 #if defined(Q_OS_WIN)
-    // start cmd.exe and keep it open
-    if (m_process->state() == QProcess::NotRunning) {
-        m_process->start("cmd.exe");
-    }
-#else
-    // on non-windows, spawn a shell
-    if (m_process->state() == QProcess::NotRunning) {
-        m_process->start("/bin/bash", QStringList() << "-i");
-    }
+    m_process->start("cmd.exe");
+
+#elif defined(Q_OS_LINUX) || defined(Q_OS_MACOS)
+    QStringList args;
+    args << "-c" << "import pty; pty.spawn('/bin/bash')";
+
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert("TERM", "xterm-256color");
+    m_process->setProcessEnvironment(env);
+    m_process->start("python3", args);
 #endif
 }
 
@@ -334,8 +337,13 @@ void TConsole::appendPlainTextThreadSafe(const QString &text)
 void TConsole::processStdout()
 {
     QByteArray d = m_process->readAllStandardOutput();
+#if defined(Q_OS_WIN)
     QString s = QString::fromLocal8Bit(d);
+#else
+    QString s = QString::fromUtf8(d); // لينكس يستخدم UTF-8
+#endif
     appendPlainTextThreadSafe(s);
+
 }
 
 void TConsole::processStderr()
@@ -355,21 +363,26 @@ void TConsole::onInputReturn()
 {
     QString cmd = m_input->text();
     if (cmd.isEmpty()) {
-        // send newline to process (some shells need it)
         if (m_process->state() != QProcess::NotRunning) {
+#if defined(Q_OS_WIN)
             m_process->write("\r\n");
+#else
+            m_process->write("\n");
+#endif
         }
         return;
     }
 
-    // add to history (avoid duplicate consecutive)
     if (m_history.isEmpty() || m_history.last() != cmd) {
         m_history.append(cmd);
     }
     m_historyIndex = -1;
 
-    // echo the command locally (like terminal)
+// echo the command locally (like terminal)
+// appendPlainTextThreadSafe(cmd + "\n");
+#if defined(Q_OS_WIN)
     appendPlainTextThreadSafe(cmd + "\n");
+#endif
 
     // send to process (CRLF on Windows)
 #if defined(Q_OS_WIN)
@@ -395,18 +408,14 @@ void TConsole::flushPending() {
         m_pending.clear();
     }
 
-    // 🔹 أضف الأسطر إلى buffer الداخلي
     for (const QString &line : items) {
         m_buffer.append(line);
     }
-    // حافظ على آخر m_maxLines فقط
     while (m_buffer.size() > m_maxLines)
         m_buffer.pop_front();
 
-    // 🔹 اعرض آخر m_maxLines أسطر فقط في QPlainTextEdit
     m_output->setPlainText(m_buffer.join("\n"));
 
-    // scroll تلقائي
     if (m_autoscroll) {
         QScrollBar *sb = m_output->verticalScrollBar();
         sb->setValue(sb->maximum());
@@ -430,34 +439,29 @@ void TConsole::appendOutput(const QString &text)
     while ((match = re.match(s, idx)).hasMatch()) {
         int start = match.capturedStart();
         int end = match.capturedEnd();
-        // append text before code
         if (start > idx) {
             QString piece = s.mid(idx, start - idx);
             m_output->moveCursor(QTextCursor::End);
             m_output->setCurrentCharFormat(curFmt);
             m_output->insertPlainText(piece);
         }
-        // process codes
         QString codeStr = match.captured(1);
         QStringList parts = codeStr.split(';');
         for (const QString &p : parts) {
             bool ok = false;
             int v = p.toInt(&ok);
             if (!ok) continue;
-            // reset
             if (v == 0) {
                 curFmt = QTextCharFormat();
             } else if (v == 1) {
-                // bold -> make font weight bold
                 curFmt.setFontWeight(QFont::Bold);
             } else if (v >= 30 && v <= 37) {
-                // set foreground basic colors
                 QColor c;
                 switch (v) {
                 case 30: c = Qt::black; break;
                 case 31: c = Qt::red; break;
                 case 32: c = Qt::green; break;
-                case 33: c = QColor(255, 165, 0); break; // orange/yellow
+                case 33: c = QColor(255, 165, 0); break;
                 case 34: c = Qt::blue; break;
                 case 35: c = Qt::magenta; break;
                 case 36: c = Qt::cyan; break;
@@ -483,7 +487,6 @@ void TConsole::appendOutput(const QString &text)
         }
         idx = end;
     }
-    // remaining text
     if (idx < s.length()) {
         QString rest = s.mid(idx);
         m_output->moveCursor(QTextCursor::End);
@@ -502,7 +505,6 @@ bool TConsole::eventFilter(QObject *obj, QEvent *ev)
     if (obj == m_input && ev->type() == QEvent::KeyPress) {
         QKeyEvent *ke = static_cast<QKeyEvent*>(ev);
         if (ke->key() == Qt::Key_Up) {
-            // history up
             if (m_history.isEmpty()) return true;
             if (m_historyIndex == -1) m_historyIndex = m_history.size() - 1;
             else m_historyIndex = qMax(0, m_historyIndex - 1);
@@ -518,17 +520,13 @@ bool TConsole::eventFilter(QObject *obj, QEvent *ev)
                 m_input->clear();
             return true;
         } else if (ke->matches(QKeySequence::Copy)) {
-            // allow Ctrl+C for copy in input
             return QWidget::eventFilter(obj, ev);
         } else if (ke->key() == Qt::Key_C && (ke->modifiers() & Qt::ControlModifier)) {
-            // allow copy
             return false;
         } else if (ke->key() == Qt::Key_L && (ke->modifiers() & Qt::ControlModifier)) {
-            // Ctrl+L clear like many terminals
             clear();
             return true;
         } else if (ke->key() == Qt::Key_Tab) {
-            // ignore tab (or implement completion)
             return true;
         }
     }
