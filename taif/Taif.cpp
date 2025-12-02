@@ -2,6 +2,7 @@
 #include "welcomewindow.h"
 #include "TConsole.h"
 #include "ProcessWorker.h"
+#include "SearchPanel.h"
 
 #include <QThread>
 #include <QDockWidget>
@@ -43,6 +44,24 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     fileSystemModel = new QFileSystemModel(this);
 
     editorSplitter = new QSplitter(Qt::Vertical, this);
+
+
+    searchBar = new SearchPanel(this);
+    searchBar->hide(); // مخفي افتراضيًا
+
+    // ربط إشارات شريط البحث بدوال Taif
+    connect(searchBar, &SearchPanel::findNext, this, &Taif::findNextText);
+    connect(searchBar, &SearchPanel::findPrevious, this, &Taif::findPrevText);
+    connect(searchBar, &SearchPanel::closed, this, &Taif::hideFindBar);
+
+
+    QShortcut *findShortcut = new QShortcut(QKeySequence::Find, this);
+    connect(findShortcut, &QShortcut::activated, this, &Taif::showFindBar);
+
+    // إخفاء الشريط عند الضغط على ESC (اختياري)
+    QShortcut *escShortcut = new QShortcut(Qt::Key_Escape, this);
+    connect(escShortcut, &QShortcut::activated, this, &Taif::hideFindBar);
+
 
     // ===================================================================
     // الخطوة 2: إعداد النافذة وشريط القوائم
@@ -98,6 +117,7 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     // ===================================================================
 
     consoleTabWidget = new QTabWidget(this);
+    consoleTabWidget->setObjectName("consoleTabWidget");
     consoleTabWidget->setDocumentMode(true);
 
     TConsole *cmdConsole = new TConsole(this);
@@ -115,6 +135,7 @@ Taif::Taif(const QString& filePath, QWidget *parent)
 
 
     editorSplitter->addWidget(tabWidget);
+    editorSplitter->addWidget(searchBar);
     editorSplitter->addWidget(consoleTabWidget);
     editorSplitter->setSizes({600, 200});
     consoleTabWidget->hide();
@@ -300,7 +321,6 @@ Taif::Taif(const QString& filePath, QWidget *parent)
         }
     )";
     tabWidget->setStyleSheet(styleSheet);
-
     tabWidget->setTabsClosable(true);
     tabWidget->setStyleSheet(R"(
     QTabWidget#MainTabs QTabWidget::pane {
@@ -397,6 +417,62 @@ bool Taif::eventFilter(QObject *object, QEvent *event)
     return QMainWindow::eventFilter(object, event);
 }
 
+
+void Taif::showFindBar() {
+    searchBar->show();
+    searchBar->setFocusToInput();
+}
+
+void Taif::hideFindBar() {
+    searchBar->hide();
+    if (TEditor* editor = currentEditor()) {
+        editor->setFocus();
+    }
+}
+
+void Taif::findNextText() {
+    TEditor* editor = currentEditor();
+    if (!editor) return;
+
+    QString text = searchBar->getText();
+    if (text.isEmpty()) return;
+
+    QTextDocument::FindFlags flags;
+    if (searchBar->isCaseSensitive()) flags |= QTextDocument::FindCaseSensitively;
+
+    // البحث للأمام
+    bool found = editor->find(text, flags);
+
+    if (!found) {
+        // إذا لم يجد، حاول البحث من البداية (Wrap around)
+        editor->moveCursor(QTextCursor::Start);
+        found = editor->find(text, flags);
+        if (!found) {
+            // يمكن إضافة وميض أحمر أو صوت هنا ليدل على عدم العثور
+            QApplication::beep();
+        }
+    }
+}
+
+void Taif::findPrevText() {
+    TEditor* editor = currentEditor();
+    if (!editor) return;
+
+    QString text = searchBar->getText();
+    if (text.isEmpty()) return;
+
+    QTextDocument::FindFlags flags = QTextDocument::FindBackward; // البحث للخلف
+    if (searchBar->isCaseSensitive()) flags |= QTextDocument::FindCaseSensitively;
+
+    bool found = editor->find(text, flags);
+
+    if (!found) {
+        // Wrap around (من النهاية)
+        editor->moveCursor(QTextCursor::End);
+        found = editor->find(text, flags);
+        if (!found) QApplication::beep();
+    }
+}
 
 void Taif::toggleConsole()
 {
@@ -799,10 +875,12 @@ void Taif::runAlif() {
 
 #if defined(Q_OS_WIN)
     QString localAlif = QDir(appDir).filePath("alif/alif.exe");
+    qDebug() <<  " -------------------------------------------------------------------------------------------- "  << localAlif <<  " -------------------------------------------------------------------------------------------- ";
+
     if (QFile::exists(localAlif)) {
         program = localAlif;
     } else {
-        program = "C:/alif/alif.exe";
+        // program = "C:/alif/alif.exe";
     }
 #elif defined(Q_OS_LINUX) || defined(Q_OS_MACOS)
     program = QDir(appDir).filePath("alif/alif");

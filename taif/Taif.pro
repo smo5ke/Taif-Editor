@@ -24,6 +24,7 @@ INCLUDEPATH +=  ../source/texteditor \
 SOURCES += \
     ../source/components/TFlatButton.cpp \
     ../source/texteditor/ProcessWorker.cpp \
+    ../source/texteditor/SearchPanel.cpp \
     ../source/texteditor/SyntaxDefinition.cpp \
     ../source/texteditor/TConsole.cpp \
     Taif.cpp \
@@ -39,6 +40,7 @@ SOURCES += \
 HEADERS += \
     ../source/components/ProcessWorker.h \
     ../source/components/TFlatButton.h \
+    ../source/texteditor/SearchPanel.h \
     ../source/texteditor/SyntaxDefinition.h \
     ../source/texteditor/TConsole.h \
     Taif.h  \

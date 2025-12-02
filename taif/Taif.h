@@ -6,6 +6,7 @@
 #include "TMenu.h"
 #include "TSettings.h"
 #include "TConsole.h"
+#include "SearchPanel.h"
 
 #include <QMainWindow>
 #include <QStatusBar>
@@ -54,6 +55,11 @@ private slots:
     void updateCursorPosition();
     void onCurrentTabChanged();
 
+    void showFindBar();
+    void hideFindBar();
+    void findNextText();
+    void findPrevText();
+
 private:
     int needSave();
     TEditor* currentEditor();
@@ -75,12 +81,12 @@ private:
     TConsole *console;
     QTabWidget *consoleTabWidget;
 
-    TConsole *cmdConsole;     // ✅ أضف هذا المتغير العضو
-    TConsole *alifConsole;    // ✅ أضف هذا المتغير العضو (اختياري لكن مفيد)
+    TConsole *cmdConsole;
+    TConsole *alifConsole;
 
     QLabel *cursorPositionLabel;
     QLabel *encodingLabel;
-    QProcess *alifProcess; // ✅ أضف هذا المتغير
-    QProcess *currentAlifProcess = nullptr; // ✅ متغير لتتبع العملية الحالية
-
+    QProcess *alifProcess;
+    QProcess *currentAlifProcess = nullptr;
+    SearchPanel *searchBar;
 };
