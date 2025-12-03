@@ -40,7 +40,6 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     tabWidget->setMovable(true);
     menuBar = new TMenuBar(this);
     mainSplitter = new QSplitter(Qt::Horizontal, this);
-    // mainSplitter->setLayoutDirection(Qt::LeftToRight);
     fileTreeView = new QTreeView(this);
     fileSystemModel = new QFileSystemModel(this);
 
@@ -85,7 +84,7 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     connect(runToolbarAction, &QAction::triggered, this, &Taif::runAlif);
 
     // mainToolBar->addSeparator();
-    // mainToolBar->addAction(menuBar->newAction); // مثال لإضافة زر New
+    // mainToolBar->addAction(menuBar->newAction);
 
 
     // ===================================================================
@@ -945,6 +944,20 @@ void Taif::runAlif() {
     console->clear();
     console->appendPlainTextThreadSafe("🚀 بدء تشغيل ملف ألف...");
     console->appendPlainTextThreadSafe("📄 الملف: " + QFileInfo(filePath).fileName());
+
+    if (!consoleTabWidget->isVisible() || consoleTabWidget->height() < 50) {
+        int totalHeight = editorSplitter->height();
+        int consoleHeight = 250;
+
+        int searchBarHeight = 0;
+        if (searchBar && searchBar->isVisible()) {
+            searchBarHeight = searchBar->height();
+        }
+        int editorHeight = totalHeight - consoleHeight - searchBarHeight;
+
+        editorSplitter->setSizes({editorHeight, 45, consoleHeight});
+    }
+
     consoleTabWidget->setVisible(true);
 
 
@@ -958,7 +971,7 @@ void Taif::runAlif() {
     if (QFile::exists(localAlif)) {
         program = localAlif;
     } else {
-        // program = "C:/alif/alif.exe";
+        program = "C:/alif/alif.exe";
     }
 #elif defined(Q_OS_LINUX) || defined(Q_OS_MACOS)
     program = QDir(appDir).filePath("alif/alif");
