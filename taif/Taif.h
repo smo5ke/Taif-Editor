@@ -60,6 +60,8 @@ private slots:
     void findNextText();
     void findPrevText();
 
+    void goToLine();
+
 private:
     int needSave();
     TEditor* currentEditor();

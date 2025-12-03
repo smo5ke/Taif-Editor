@@ -8,6 +8,159 @@
 #include <QSettings>
 #include <QPainterPath>
 #include <QStack>
+#include <QMenu>
+#include <QAction>
+#include <QFile>
+
+
+TMinimap::TMinimap(TEditor *editor) : QWidget(editor), editor(editor)
+{
+    setStyleSheet("background-color: #1e1e1e; border-left: 1px solid #333;");
+    setFixedWidth(100);
+}
+
+QSize TMinimap::sizeHint() const {
+    return QSize(100, 0);
+}
+
+// void TMinimap::paintEvent(QPaintEvent *event)
+// {
+//     Q_UNUSED(event);
+//     QPainter painter(this);
+//     // painter.fillRect(rect(), QColor("#1e1e1e")); // خلفية الخريطة
+
+//     if (editor) {
+//         // 1. إجبار الرسام على العمل بنظام إحداثيات LTR لضمان الرسم الصحيح
+//         painter.setLayoutDirection(Qt::LayoutDirectionAuto);
+
+//         qreal scale = 0.15;
+//         painter.save();
+//         painter.setClipRect(rect());
+
+//         painter.scale(scale, scale);
+//         painter.translate(0, 0);
+
+//         // رسم محتوى المستند
+//         // ملاحظة: drawContents ترسم كل شيء، بما في ذلك الخلفية إذا لم نكن حذرين
+//         // لكن QPlainTextEdit عادة ما يكون شفافاً عند الرسم بهذه الطريقة
+//         editor->document()->drawContents(&painter);
+
+//         painter.restore();
+
+//         // 2. رسم المستطيل المضيء
+//         // ... (بقية كود المستطيل المضيء كما هو، فهو يعتمد على الأرقام فقط) ...
+//         int scrollMax = editor->verticalScrollBar()->maximum();
+//         int scrollVal = editor->verticalScrollBar()->value();
+//         int pageStep  = editor->verticalScrollBar()->pageStep();
+
+//         long long totalScrollableHeight = scrollMax + pageStep;
+//         if (totalScrollableHeight == 0) totalScrollableHeight = 1;
+
+//         double viewRatio = (double)pageStep / totalScrollableHeight;
+//         double posRatio = (double)scrollVal / totalScrollableHeight;
+
+//         int mapHeight = height();
+//         int highlightH = mapHeight * viewRatio;
+//         int highlightY = mapHeight * posRatio;
+
+//         if (highlightH < 20) highlightH = 20;
+
+//         painter.setPen(Qt::NoPen);
+//         painter.setBrush(QColor(255, 255, 255, 10));
+//         painter.drawRect(0, highlightY, width(), highlightH);
+//     }
+// }
+void TMinimap::paintEvent(QPaintEvent *event)
+{
+    Q_UNUSED(event);
+    QPainter painter(this);
+
+    // 1. رسم الخلفية (مهم جداً للتباين)
+    painter.fillRect(rect(), QColor("#1e1e1e"));
+
+    if (!editor) return;
+
+    // إعدادات الخط والرسم
+    // نستخدم خطاً صغيراً جداً لرسم النصوص
+    QFont font = editor->font();
+    // لا نعتمد على Scale للرسام، بل نصغر الخط نفسه ليكون أوضح في الرسم اليدوي
+    // أو نستخدم Scale ونرسم بخط عادي. لنجرب الـ Scale لأنه أسرع:
+
+    qreal scale = 0.15; // نسبة التصغير
+    painter.save();
+    painter.scale(scale, scale);
+
+    // ✅ إجبار الرسم من اليسار لليمين داخل الخريطة لضمان ظهور النص في المكان المتوقع
+    painter.setLayoutDirection(Qt::LeftToRight);
+    painter.setPen(QColor("#a0a0a0")); // لون رمادي فاتح للنص
+
+    // 2. ✅✅✅ الرسم اليدوي (Manual Loop) ✅✅✅
+    // نمر على كل الكتل (الأسطر) ونرسمها يدوياً
+    QTextBlock block = editor->document()->firstBlock();
+    qreal currentY = 0;
+
+    while (block.isValid()) {
+        QString text = block.text();
+
+        // إذا كان السطر غير فارغ، ارسمه
+        if (!text.isEmpty()) {
+            // نرسم النص عند الإحداثي (0, currentY)
+            // نستخدم drawText لرسم النص الخام
+            // (يمكنك لاحقاً تحسينها لرسم مربعات ملونة مثل VSCode بدلاً من النص)
+            painter.drawText(QPointF(0, currentY + block.layout()->boundingRect().height()), text);
+        }
+
+        // نزيد الإحداثي Y بمقدار ارتفاع السطر الحالي
+        currentY += block.layout()->boundingRect().height();
+
+        block = block.next();
+    }
+
+    painter.restore(); // نعود للحجم الطبيعي لرسم المستطيل المضيء
+
+    // 3. رسم المستطيل المضيء (نفس الكود السابق)
+    int scrollMax = editor->verticalScrollBar()->maximum();
+    int scrollVal = editor->verticalScrollBar()->value();
+    int pageStep  = editor->verticalScrollBar()->pageStep();
+
+    long long totalScrollableHeight = scrollMax + pageStep;
+    if (totalScrollableHeight <= 0) totalScrollableHeight = 1;
+
+    double viewRatio = (double)pageStep / totalScrollableHeight;
+    double posRatio = (double)scrollVal / totalScrollableHeight;
+
+    if (scrollMax == 0) { viewRatio = 1.0; posRatio = 0.0; }
+
+    int mapHeight = height();
+    int highlightY = mapHeight * posRatio;
+    int highlightH = mapHeight * viewRatio;
+
+    if (highlightH < 15) highlightH = 15;
+    if (highlightY + highlightH > mapHeight) highlightY = mapHeight - highlightH;
+
+    // رسم المستطيل
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(255, 255, 255, 30));
+    painter.drawRect(0, highlightY, width(), highlightH);
+}
+
+void TMinimap::mousePressEvent(QMouseEvent *event) {
+    scrollEditorTo(event->pos());
+}
+
+void TMinimap::mouseMoveEvent(QMouseEvent *event) {
+    if (event->buttons() & Qt::LeftButton) {
+        scrollEditorTo(event->pos());
+    }
+}
+
+void TMinimap::scrollEditorTo(const QPoint &pos) {
+    // حساب نسبة النقر في الخريطة وتطبيقها على سكرول المحرر
+    double ratio = (double)pos.y() / height();
+    int maxVal = editor->verticalScrollBar()->maximum();
+    editor->verticalScrollBar()->setValue(maxVal * ratio);
+}
+
 
 
 TEditor::TEditor(QWidget* parent) {
@@ -32,18 +185,65 @@ TEditor::TEditor(QWidget* parent) {
     connect(this, &TEditor::cursorPositionChanged, this, &TEditor::highlightCurrentLine);
     connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::updateFoldRegions);
 
+    minimap = new TMinimap(this);
+
+    connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::updateMinimap);
+    connect(this->verticalScrollBar(), &QScrollBar::valueChanged, this, &TEditor::updateMinimap);
+
     updateLineNumberAreaWidth();
     highlightCurrentLine();
 
-    // load saved font size
     QSettings settingsVal("Alif", "Taif");
     int savedSize = settingsVal.value("editorFontSize").toInt();
     updateFontSize(savedSize);
 
+    autoSaveTimer = new QTimer(this);
+    autoSaveTimer->setInterval(30000);
+    connect(autoSaveTimer, &QTimer::timeout, this, &TEditor::performAutoSave);
+
+    connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::startAutoSave);
+
     highlighter = new THighlighter(this->document());
-    // highlighter->loadSyntaxDefinition(":/syntax/alif.json");
-    // Handle special key events
-    installEventFilter(this); // for SHIFT + ENTER it's make line without number
+    installEventFilter(this);
+}
+
+void TEditor::wheelEvent(QWheelEvent *event) {
+    if (event->modifiers() & Qt::ControlModifier) {
+        const int delta = event->angleDelta().y();
+        if (delta == 0) return;
+
+        QFont font = this->font();
+        qreal currentSize = font.pointSizeF();
+
+        qreal step = 0.5;
+
+        if (delta > 0) {
+            currentSize += step;
+        } else {
+            currentSize -= step;
+        }
+
+        if (currentSize < 5.0) currentSize = 5.0;
+        if (currentSize > 50) currentSize = 50;
+
+        font.setPointSizeF(currentSize);
+        this->setFont(font);
+
+        if (lineNumberArea) {
+            QFont lineFont = lineNumberArea->font();
+            lineFont.setPointSizeF(currentSize);
+            lineNumberArea->setFont(lineFont);
+        }
+
+        updateLineNumberAreaWidth();
+
+        return;
+    }
+    QPlainTextEdit::wheelEvent(event);
+}
+
+void TEditor::updateMinimap() {
+    if (minimap) minimap->update();
 }
 
 void TEditor::updateFontSize(int size) {
@@ -51,13 +251,143 @@ void TEditor::updateFontSize(int size) {
         size = 16;
     }
 
-    QFont font = this->font(); // Get current font
+    QFont font = this->font();
     font.setPointSize(size);
     this->setFont(font);
 
     QFont fontNums = lineNumberArea->font();
     fontNums.setPointSize(size);
     lineNumberArea->setFont(fontNums);
+}
+
+
+// 1. دالة تعليق/إلغاء تعليق الأكواد
+void TEditor::toggleComment()
+{
+    QTextCursor cursor = textCursor();
+    cursor.beginEditBlock(); // لبدء عملية تراجع (Undo) واحدة
+
+    int startPos = cursor.selectionStart();
+    int endPos = cursor.selectionEnd();
+
+    // تحديد بداية ونهاية الأسطر المحددة
+    cursor.setPosition(startPos);
+    int startBlock = cursor.blockNumber();
+    cursor.setPosition(endPos, QTextCursor::KeepAnchor);
+    int endBlock = cursor.blockNumber();
+
+    // إذا كان التحديد ينتهي في بداية سطر جديد، لا نحسب السطر الأخير
+    if (cursor.atBlockStart() && endBlock > startBlock) {
+        endBlock--;
+    }
+
+    // التحقق: هل سنقوم بالتعليق أم إزالة التعليق؟
+    bool shouldComment = false;
+
+    // نفحص السطر الأول لنقرر (إذا لم يكن معلقاً، سنعلق الجميع)
+    QTextBlock block = document()->findBlockByNumber(startBlock);
+    if (!block.text().trimmed().startsWith("#")) {
+        shouldComment = true;
+    }
+
+    // تنفيذ العملية على كل الأسطر المحددة
+    for (int i = startBlock; i <= endBlock; ++i) {
+        block = document()->findBlockByNumber(i);
+        QTextCursor lineCursor(block);
+
+        if (shouldComment) {
+            // إضافة تعليق
+            lineCursor.movePosition(QTextCursor::StartOfBlock);
+            lineCursor.insertText("# ");
+        } else {
+            // إزالة تعليق
+            QString text = block.text();
+            if (text.startsWith("# ")) {
+                lineCursor.movePosition(QTextCursor::StartOfBlock);
+                lineCursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, 2);
+                lineCursor.removeSelectedText();
+            } else if (text.startsWith("#")) {
+                lineCursor.movePosition(QTextCursor::StartOfBlock);
+                lineCursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, 1);
+                lineCursor.removeSelectedText();
+            }
+        }
+    }
+
+    cursor.endEditBlock();
+}
+
+// 2. دالة تكرار السطر (Duplicate)
+void TEditor::duplicateLine()
+{
+    QTextCursor cursor = textCursor();
+    cursor.beginEditBlock();
+
+    // احفظ النص الحالي للسطر
+    QString lineText = cursor.block().text();
+
+    // انتقل لنهاية السطر
+    cursor.movePosition(QTextCursor::EndOfBlock);
+
+    // أضف سطراً جديداً والنص المنسوخ
+    cursor.insertText("\n" + lineText);
+
+    cursor.endEditBlock();
+}
+
+// 3. دالة تحريك السطر للأعلى
+void TEditor::moveLineUp()
+{
+    QTextCursor cursor = textCursor();
+    QTextBlock currentBlock = cursor.block();
+    QTextBlock prevBlock = currentBlock.previous();
+
+    if (!prevBlock.isValid()) return; // نحن في السطر الأول
+
+    cursor.beginEditBlock();
+
+    // حفظ نص السطر الحالي وحذفه
+    QString currentText = currentBlock.text();
+    cursor.movePosition(QTextCursor::StartOfBlock);
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    cursor.removeSelectedText();
+    cursor.deletePreviousChar(); // حذف السطر الفارغ
+
+    // الانتقال للسطر السابق وإدراج النص قبله
+    cursor.movePosition(QTextCursor::StartOfBlock); // بداية السطر السابق
+    cursor.insertText(currentText + "\n");
+
+    // إعادة المؤشر للسطر الذي تم تحريكه
+    cursor.movePosition(QTextCursor::Up);
+    setTextCursor(cursor);
+
+    cursor.endEditBlock();
+}
+
+// 4. دالة تحريك السطر للأسفل
+void TEditor::moveLineDown()
+{
+    QTextCursor cursor = textCursor();
+    QTextBlock currentBlock = cursor.block();
+    QTextBlock nextBlock = currentBlock.next();
+
+    if (!nextBlock.isValid()) return; // نحن في السطر الأخير
+
+    cursor.beginEditBlock();
+
+    // حفظ نص السطر الحالي وحذفه
+    QString currentText = currentBlock.text();
+    cursor.movePosition(QTextCursor::StartOfBlock);
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    cursor.removeSelectedText();
+    if (cursor.atBlockStart()) cursor.deleteChar(); // حذف السطر الفارغ (السطر التالي سيصعد)
+
+    // الانتقال للسطر التالي (الذي أصبح مكان الحالي) ثم نهايته
+    cursor.movePosition(QTextCursor::EndOfBlock);
+    cursor.insertText("\n" + currentText);
+
+    setTextCursor(cursor);
+    cursor.endEditBlock();
 }
 
 bool TEditor::eventFilter(QObject* obj, QEvent* event) {
@@ -82,6 +412,42 @@ bool TEditor::eventFilter(QObject* obj, QEvent* event) {
     return QPlainTextEdit::eventFilter(obj, event);
 }
 
+void TEditor::contextMenuEvent(QContextMenuEvent *event)
+{
+    // 1. إنشاء القائمة
+    QMenu *menu = createStandardContextMenu(); // نبدأ بالقائمة القياسية للنظام
+
+    // 2. تخصيص القائمة (إضافة خياراتنا)
+    menu->addSeparator(); // خط فاصل
+
+    // --- خيار تعليق/إلغاء تعليق ---
+    QAction *commentAction = new QAction("تعليق/إلغاء تعليق", this);
+    commentAction->setShortcut(QKeySequence("Ctrl+/"));
+    connect(commentAction, &QAction::triggered, this, &TEditor::toggleComment);
+    menu->addAction(commentAction);
+
+    // --- خيار تكرار السطر ---
+    QAction *duplicateAction = new QAction("تكرار السطر", this);
+    duplicateAction->setShortcut(QKeySequence("Ctrl+D"));
+    connect(duplicateAction, &QAction::triggered, this, &TEditor::duplicateLine);
+    menu->addAction(duplicateAction);
+
+    // 3. تطبيق التصميم الداكن (لضمان ظهورها بشكل صحيح)
+    // (يفضل وضع هذا في Taif.cpp، لكن سأضعه هنا مؤقتاً لضمان عمله فوراً)
+    menu->setStyleSheet(
+        "QMenu { background-color: #252526; color: #cccccc; border: 1px solid #454545; }"
+        "QMenu::item { padding: 5px 20px; background-color: transparent; }"
+        "QMenu::item:selected { background-color: #094771; color: #ffffff; }"
+        "QMenu::separator { height: 1px; background: #454545; margin: 5px 0; }"
+        );
+
+    // 4. عرض القائمة في مكان الماوس
+    menu->exec(event->globalPos());
+
+    // 5. تنظيف الذاكرة
+    delete menu;
+}
+
 int TEditor::lineNumberAreaWidth() const {
     int digits = 1;
     int max = qMax(1, blockCount());
@@ -96,10 +462,27 @@ int TEditor::lineNumberAreaWidth() const {
     return space;
 }
 
+// void TEditor::updateLineNumberAreaWidth() {
+//     int width = lineNumberAreaWidth();
+//     // Set viewport margins to create space for line number area on the Left
+//     setViewportMargins(0, 0, width + 10, 0);
+
+// }
+
 void TEditor::updateLineNumberAreaWidth() {
-    int width = lineNumberAreaWidth();
-    // Set viewport margins to create space for line number area on the Left
-    setViewportMargins(0, 0, width + 10, 0);
+    // عرض منطقة الأرقام
+    int numsWidth = lineNumberAreaWidth();
+
+    // عرض الخريطة
+    int mapWidth = 0;
+    if (minimap && minimap->isVisible()) {
+        mapWidth = minimap->width();
+    }
+
+    // ✅ التصحيح:
+    // المتغير الأول (يسار) -> للخريطة
+    // المتغير الثالث (يمين) -> للأرقام
+    setViewportMargins(mapWidth, 0, numsWidth, 0);
 }
 
 inline void TEditor::updateLineNumberArea(const QRect &rect, int dy) {
@@ -113,18 +496,43 @@ inline void TEditor::updateLineNumberArea(const QRect &rect, int dy) {
         updateLineNumberAreaWidth();
 }
 
+// void TEditor::resizeEvent(QResizeEvent* event) {
+//     QPlainTextEdit::resizeEvent(event);
+
+//     QRect cr = contentsRect();
+//     int areaWidth = lineNumberAreaWidth();
+//     // Position line number area on the Left
+//     lineNumberArea->setGeometry(QRect(
+//         cr.right() - areaWidth,
+//         cr.top(),
+//         areaWidth,
+//         cr.height()
+//     ));
+
+//     // lineNumberArea->setGeometry(QRect(cr.left(), cr.top(), lineNumberAreaWidth(), cr.height()));
+
+//     // 2. ضبط منطقة الخريطة المصغرة (يمين)
+//     // if (minimap) {
+//         int mapWidth = minimap->width();
+//         minimap->setGeometry(QRect(cr.left() - mapWidth, cr.top(), mapWidth, cr.height()));
+//     // }
+// }
+
 void TEditor::resizeEvent(QResizeEvent* event) {
     QPlainTextEdit::resizeEvent(event);
 
     QRect cr = contentsRect();
-    int areaWidth = lineNumberAreaWidth();
-    // Position line number area on the Left
-    lineNumberArea->setGeometry(QRect(
-        cr.right() - areaWidth,
-        cr.top(),
-        areaWidth,
-        cr.height()
-    ));
+    int numsWidth = lineNumberAreaWidth();
+
+    // ✅ 1. وضع أرقام الأسطر في أقصى اليمين
+    // نستخدم this->width() للحصول على العرض الكلي للمحرر
+    lineNumberArea->setGeometry(this->width() - numsWidth, cr.top(), numsWidth, cr.height());
+
+    // ✅ 2. وضع الخريطة في أقصى اليسار (عند الإحداثي 0)
+    if (minimap) {
+        int mapWidth = minimap->width();
+        minimap->setGeometry(25, cr.top(), mapWidth, cr.height());
+    }
 }
 
 void TEditor::lineNumberAreaPaintEvent(QPaintEvent* event) {
@@ -200,7 +608,7 @@ void TEditor::highlightCurrentLine() {
 
 void TEditor::updateFoldRegions() {
 
-    // 🔹 حفظ حالة الطي الحالية
+    // حفظ حالة الطي الحالية
     QHash<int, bool> previousFoldStates;
     for (const FoldRegion& region : foldRegions) {
         previousFoldStates[region.startBlockNumber] = region.folded;
@@ -353,7 +761,7 @@ void TEditor::dragEnterEvent(QDragEnterEvent* event) {
     event->ignore(); // Ignore if not a .alif ... file
 }
 
-void TEditor::dragMoveEvent(QDragMoveEvent* event) { // ضروري لمنع ظهور سلوك غريب بعد الإفلات
+void TEditor::dragMoveEvent(QDragMoveEvent* event) {
     event->acceptProposedAction();
 }
 
@@ -458,4 +866,47 @@ QString TEditor::getCurrentLineIndentation(const QTextCursor &cursor) const {
         }
     }
     return indentation;
+}
+
+
+
+
+void TEditor::startAutoSave() {
+    if (!autoSaveTimer->isActive()) {
+        autoSaveTimer->start();
+    }
+}
+
+void TEditor::stopAutoSave() {
+    autoSaveTimer->stop();
+}
+
+void TEditor::performAutoSave() {
+    // 1. تحقق هل يوجد مسار للملف وهل هو معدل؟
+    QString filePath = this->property("filePath").toString();
+    if (filePath.isEmpty() || !this->document()->isModified()) return;
+
+    // 2. أنشئ اسم ملف النسخة الاحتياطية (مثلاً: file.alif.~)
+    QString backupPath = filePath + ".~";
+
+    // 3. احفظ المحتوى فيه
+    QFile file(backupPath);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&file);
+        out << this->toPlainText();
+        file.close();
+        // (اختياري) طباعة في الكونسول للمراقبة
+        // qDebug() << "Auto-saved to:" << backupPath;
+    }
+}
+
+void TEditor::removeBackupFile() {
+    QString filePath = this->property("filePath").toString();
+    if (filePath.isEmpty()) return;
+
+    QString backupPath = filePath + ".~";
+    if (QFile::exists(backupPath)) {
+        QFile::remove(backupPath); // احذف النسخة الاحتياطية لأننا حفظنا الأصلي
+    }
+    stopAutoSave(); // أوقف المؤقت حتى يحدث تعديل جديد
 }

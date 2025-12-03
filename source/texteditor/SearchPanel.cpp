@@ -38,8 +38,10 @@ SearchPanel::SearchPanel(QWidget *parent) : QWidget(parent) {
     layout->addStretch(); // فراغ في النهاية
 
     // 4. الخلفية واللون
-    setStyleSheet("background-color: #1e202e; border-top: 1px solid #3e3e42;");
-    setFixedHeight(45); // ارتفاع ثابت للشريط
+    QString styleSheet = R"("background-color: #1e202e; border-top: 1px solid #3e3e42;")";
+    setFixedHeight(45);
+
+    this->setStyleSheet(styleSheet);
 
     // 5. ربط الإشارات
     connect(btnNext, &QPushButton::clicked, this, &SearchPanel::findNext);
@@ -52,5 +54,5 @@ SearchPanel::SearchPanel(QWidget *parent) : QWidget(parent) {
 
 QString SearchPanel::getText() const { return searchInput->text(); }
 bool SearchPanel::isCaseSensitive() const { return checkCase->isChecked(); }
-bool SearchPanel::isWholeWord() const { return false; } // يمكن إضافتها لاحقًا
+bool SearchPanel::isWholeWord() const { return false; }
 void SearchPanel::setFocusToInput() { searchInput->setFocus(); searchInput->selectAll(); }

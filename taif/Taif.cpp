@@ -22,7 +22,7 @@
 #include <QStyleFactory>
 #include <QKeyEvent>
 #include <QTimer>
-
+#include <QInputDialog>
 
 Taif::Taif(const QString& filePath, QWidget *parent)
     : QMainWindow(parent)
@@ -40,6 +40,7 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     tabWidget->setMovable(true);
     menuBar = new TMenuBar(this);
     mainSplitter = new QSplitter(Qt::Horizontal, this);
+    // mainSplitter->setLayoutDirection(Qt::LeftToRight);
     fileTreeView = new QTreeView(this);
     fileSystemModel = new QFileSystemModel(this);
 
@@ -47,18 +48,11 @@ Taif::Taif(const QString& filePath, QWidget *parent)
 
 
     searchBar = new SearchPanel(this);
-    searchBar->hide(); // مخفي افتراضيًا
-
-    // ربط إشارات شريط البحث بدوال Taif
-    connect(searchBar, &SearchPanel::findNext, this, &Taif::findNextText);
-    connect(searchBar, &SearchPanel::findPrevious, this, &Taif::findPrevText);
-    connect(searchBar, &SearchPanel::closed, this, &Taif::hideFindBar);
-
+    searchBar->hide();
 
     QShortcut *findShortcut = new QShortcut(QKeySequence::Find, this);
     connect(findShortcut, &QShortcut::activated, this, &Taif::showFindBar);
 
-    // إخفاء الشريط عند الضغط على ESC (اختياري)
     QShortcut *escShortcut = new QShortcut(Qt::Key_Escape, this);
     connect(escShortcut, &QShortcut::activated, this, &Taif::hideFindBar);
 
@@ -121,7 +115,6 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     consoleTabWidget->setDocumentMode(true);
 
     TConsole *cmdConsole = new TConsole(this);
-    cmdConsole->setObjectName("cmdConsole");
     QString terminalName = "Terminal (CMD)";
 #if defined(Q_OS_LINUX)
     terminalName = "Terminal (Bash)";
@@ -137,7 +130,8 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     editorSplitter->addWidget(tabWidget);
     editorSplitter->addWidget(searchBar);
     editorSplitter->addWidget(consoleTabWidget);
-    editorSplitter->setSizes({600, 200});
+    editorSplitter->setSizes({1000, 200});
+
     consoleTabWidget->hide();
 
     mainSplitter->addWidget(fileTreeView);
@@ -170,7 +164,33 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     connect(menuBar, &TMenuBar::openFolderRequested, this, &Taif::handleOpenFolderMenu);
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::updateWindowTitle);
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::onCurrentTabChanged);
+    connect(searchBar, &SearchPanel::findNext, this, &Taif::findNextText);
+    connect(searchBar, &SearchPanel::findPrevious, this, &Taif::findPrevText);
+    connect(searchBar, &SearchPanel::closed, this, &Taif::hideFindBar);
     onCurrentTabChanged();
+
+    QShortcut *goToLineShortcut = new QShortcut(QKeySequence("Ctrl+G"), this);
+    connect(goToLineShortcut, &QShortcut::activated, this, &Taif::goToLine);
+
+    QShortcut *commentShortcut = new QShortcut(QKeySequence("Ctrl+/"), this);
+    connect(commentShortcut, &QShortcut::activated, this, [this](){
+        if (TEditor* editor = currentEditor()) editor->toggleComment();
+    });
+
+    QShortcut *duplicateShortcut = new QShortcut(QKeySequence("Ctrl+D"), this);
+    connect(duplicateShortcut, &QShortcut::activated, this, [this](){
+        if (TEditor* editor = currentEditor()) editor->duplicateLine();
+    });
+
+    QShortcut *moveUpShortcut = new QShortcut(QKeySequence("Alt+Up"), this);
+    connect(moveUpShortcut, &QShortcut::activated, this, [this](){
+        if (TEditor* editor = currentEditor()) editor->moveLineUp();
+    });
+
+    QShortcut *moveDownShortcut = new QShortcut(QKeySequence("Alt+Down"), this);
+    connect(moveDownShortcut, &QShortcut::activated, this, [this](){
+        if (TEditor* editor = currentEditor()) editor->moveLineDown();
+    });
 
     // ===================================================================
     //  الخطوة 7: تطبيق التصميم (QSS)
@@ -307,18 +327,26 @@ Taif::Taif(const QString& filePath, QWidget *parent)
             font-size: 6pt;
         }
 
-        /*  تصميم خاص لمحتوى تبويبات الكونسول (TConsole) */
-        QTabWidget#consoleTabWidget QWidget {
-             background-color: #1e202e;
-             color: #1e202e;
+        QMenu {
+            background-color: #252526;
+            border: 1px solid #454545;
+            color: #cccccc;
+            padding: 5px 0;
+        }
+        QMenu::item {
+            background-color: transparent;
+            padding: 5px 20px 5px 20px;
+        }
+        QMenu::item:selected {
+            background-color: #094771;
+            color: #ffffff;
+        }
+        QMenu::separator {
+            height: 1px;
+            background: #454545;
+            margin: 4px 0px;
         }
 
-        /*  إذا كان TConsole يرث من QPlainTextEdit */
-        QPlainTextEdit {
-            background-color: #1e202e;
-            color: #1e202e;
-            border: none; /* لإزالة الحدود البيضاء إن وجدت */
-        }
     )";
     tabWidget->setStyleSheet(styleSheet);
     tabWidget->setTabsClosable(true);
@@ -417,6 +445,29 @@ bool Taif::eventFilter(QObject *object, QEvent *event)
     return QMainWindow::eventFilter(object, event);
 }
 
+void Taif::goToLine()
+{
+    TEditor *editor = currentEditor();
+    if (!editor) return;
+
+    bool ok;
+    // أقصى رقم هو عدد أسطر الملف الحالي
+    int maxLine = editor->blockCount();
+
+    int lineNumber = QInputDialog::getInt(this, "الذهاب إلى سطر",
+                                          QString("أدخل رقم السطر (1 - %1):").arg(maxLine),
+                                          1, 1, maxLine, 1, &ok);
+
+    if (ok) {
+        // نقل المؤشر
+        QTextCursor cursor = editor->textCursor();
+        cursor.setPosition(0); // ارجع للبداية
+        cursor.movePosition(QTextCursor::Down, QTextCursor::MoveAnchor, lineNumber - 1); // تحرك للأسفل
+        editor->setTextCursor(cursor);
+        editor->centerCursor(); // اجعل السطر في وسط الشاشة
+        editor->setFocus();
+    }
+}
 
 void Taif::showFindBar() {
     searchBar->show();
@@ -476,17 +527,21 @@ void Taif::findPrevText() {
 
 void Taif::toggleConsole()
 {
-    consoleTabWidget->setVisible(!consoleTabWidget->isVisible());
+    bool isVisible = !consoleTabWidget->isVisible();
+    consoleTabWidget->setVisible(isVisible);
 
-    if (consoleTabWidget->isVisible()) {
-        QWidget* currentConsole = consoleTabWidget->currentWidget();
-        if (currentConsole) {
-            currentConsole->setFocus();
-        }
+    if (isVisible) {
+        int totalHeight = editorSplitter->height();
+        int consoleHeight = 250;
+        int searchBarHeight = searchBar->isVisible() ? searchBar->height() : 0;
+
+        int editorHeight = totalHeight - consoleHeight - searchBarHeight;
+
+        editorSplitter->setSizes({editorHeight, 45, consoleHeight});
+
+        if (QWidget* w = consoleTabWidget->currentWidget()) w->setFocus();
     } else {
-        if(TEditor* editor = currentEditor()) {
-            editor->setFocus();
-        }
+        if (TEditor* editor = currentEditor()) editor->setFocus();
     }
 }
 
@@ -575,6 +630,29 @@ void Taif::openFile(QString filePath) {
             connect(newEditor->document(), &QTextDocument::modificationChanged, this, &Taif::onModificationChanged);
             newEditor->setPlainText(content);
             newEditor->setProperty("filePath", filePath);
+
+
+            QString backupPath = filePath + ".~";
+            if (QFile::exists(backupPath)) {
+                QMessageBox::StandardButton reply;
+                reply = QMessageBox::warning(this, "استعادة ملف",
+                                             "يبدو أن البرنامج أُغلق بشكل غير متوقع.\n"
+                                             "يوجد نسخة محفوظة تلقائيًا أحدث من الملف الأصلي.\n\n"
+                                             "هل تريد استعادتها؟",
+                                             QMessageBox::Yes | QMessageBox::No);
+                if (reply == QMessageBox::Yes) {
+                    QFile backup(backupPath);
+                    if (backup.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                        QTextStream in(&backup);
+                        newEditor->setPlainText(in.readAll()); // استبدل النص بنسخة الطوارئ
+                        newEditor->document()->setModified(true); // نعتبره معدلاً ليقوم المستخدم بحفظه
+                        backup.close();
+                    }
+                } else {
+                    // إذا رفض المستخدم، احذف النسخة الاحتياطية القديمة
+                    QFile::remove(backupPath);
+                }
+            }
 
             connect(newEditor->document(), &QTextDocument::modificationChanged, this, &Taif::onModificationChanged);
             connect(newEditor, &QPlainTextEdit::cursorPositionChanged, this, &Taif::updateCursorPosition);
@@ -669,7 +747,7 @@ void Taif::saveFile() {
                 QFileInfo fileInfo(filePath);
                 tabWidget->setTabText(index, fileInfo.fileName());
             }
-
+            editor->removeBackupFile();
             updateWindowTitle();
             return ;
         } else {
